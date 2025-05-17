@@ -1,0 +1,66 @@
+import curses
+
+# 迷宮地圖 (用 list of strings 表示)
+maze = [
+    "##########",
+    "#        #",
+    "#  ####  #",
+    "#  #  #  #",
+    "#  #E #  #",
+    "#  ####  #",
+    "#        #",
+    "##########"
+]
+
+# 玩家初始位置
+player_x = 1
+player_y = 1
+
+def main(stdscr):
+    global player_x, player_y
+    curses.curs_set(0)  # 隱藏游標
+
+    while True:
+        stdscr.clear()
+
+        # 繪製迷宮
+        for y, row in enumerate(maze):
+            stdscr.addstr(y, 0, row)
+
+        # 畫玩家位置
+        stdscr.addstr(player_y, player_x, "@")
+
+        stdscr.refresh()
+
+        key = stdscr.getch()
+
+        # 處理移動
+        dx, dy = 0, 0
+        if key == curses.KEY_UP:
+            dy = -1
+        elif key == curses.KEY_DOWN:
+            dy = 1
+        elif key == curses.KEY_LEFT:
+            dx = -1
+        elif key == curses.KEY_RIGHT:
+            dx = 1
+        elif key == ord('q'):
+            break  # 按 q 退出
+
+        new_x = player_x + dx
+        new_y = player_y + dy
+
+        # 判斷是否撞牆
+        if maze[new_y][new_x] != "#":
+            player_x = new_x
+            player_y = new_y
+
+        # 是否到達出口
+        if maze[player_y][player_x] == "E":
+            stdscr.addstr(len(maze) + 1, 0, "恭喜你走出迷宮！按任意鍵結束")
+            stdscr.refresh()
+            stdscr.getch()
+            break
+
+if __name__ == "__main__":
+    curses.wrapper(main)
