@@ -1,0 +1,221 @@
+import tkinter as tk
+import random
+import heapq
+
+class MazeGame:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("分階段迷宮挑戰版")
+
+        # 關卡設定：迷宮大小列表
+        self.levels = [11, 21, 31]
+        self.current_level = 0
+
+        # 預設參數
+        self.cell_size = 20
+        self.timer_seconds = 180  # 3分鐘倒數
+
+        # UI
+        self.canvas = tk.Canvas(root)
+        self.canvas.pack(pady=10)
+
+        self.timer_label = tk.Label(root, text="", font=("Arial", 16))
+        self.timer_label.pack()
+
+        self.reset_button = tk.Button(root, text="重新開始", command=self.restart_game)
+        self.reset_button.pack(pady=5)
+
+        self.root.bind("<Key>", self.key_handler)
+
+        # 狀態變數
+        self.maze = []
+        self.player_pos = (1, 1)
+        self.enemy_pos = (1, 1)
+        self.exit_pos = (0, 0)
+        self.timer_running = False
+        self.time_left = self.timer_seconds
+
+        self.restart_game()
+
+    def restart_game(self):
+        self.current_level = 0
+        self.start_level()
+
+    def start_level(self):
+        self.grid_size = self.levels[self.current_level]
+        # 更新畫布大小
+        self.canvas.config(width=self.grid_size * self.cell_size, height=self.grid_size * self.cell_size)
+
+        self.player_pos = (1, 1)
+        self.enemy_pos = (1, 1)
+        self.exit_pos = (self.grid_size - 2, self.grid_size - 2)
+        self.time_left = self.timer_seconds
+        self.timer_running = True
+
+        self.generate_maze()
+        self.draw_maze()
+        self.update_timer()
+        self.root.after(5000, self.move_enemy)
+
+    def next_level(self):
+        self.current_level += 1
+        if self.current_level >= len(self.levels):
+            self.timer_running = False
+            self.timer_label.config(text="🎉 恭喜你完成所有關卡！", fg="blue")
+            return
+        self.start_level()
+
+    def generate_maze(self):
+        self.maze = [['#'] * self.grid_size for _ in range(self.grid_size)]
+        stack = [(1, 1)]
+        self.maze[1][1] = ' '
+
+        while stack:
+            x, y = stack[-1]
+            directions = [(2, 0), (-2, 0), (0, 2), (0, -2)]
+            random.shuffle(directions)
+
+            carved = False
+            for dx, dy in directions:
+                nx, ny = x + dx, y + dy
+                if 1 <= nx < self.grid_size - 1 and 1 <= ny < self.grid_size - 1 and self.maze[ny][nx] == '#':
+                    self.maze[ny][nx] = ' '
+                    self.maze[y + dy // 2][x + dx // 2] = ' '
+                    stack.append((nx, ny))
+                    carved = True
+                    break
+
+            if not carved:
+                stack.pop()
+
+        self.maze[self.exit_pos[1]][self.exit_pos[0]] = 'E'
+
+    def draw_maze(self):
+        self.canvas.delete("all")
+        for y in range(self.grid_size):
+            for x in range(self.grid_size):
+                color = "black" if self.maze[y][x] == '#' else "white"
+                if self.maze[y][x] == 'E':
+                    color = "green"
+                self.canvas.create_rectangle(x * self.cell_size, y * self.cell_size,
+                                             (x + 1) * self.cell_size, (y + 1) * self.cell_size,
+                                             fill=color, outline="gray")
+
+        self.player_oval = self.canvas.create_oval(
+            self.player_pos[0] * self.cell_size + 3, self.player_pos[1] * self.cell_size + 3,
+            (self.player_pos[0] + 1) * self.cell_size - 3, (self.player_pos[1] + 1) * self.cell_size - 3,
+            fill="blue")
+
+        self.enemy_oval = self.canvas.create_oval(
+            self.enemy_pos[0] * self.cell_size + 3, self.enemy_pos[1] * self.cell_size + 3,
+            (self.enemy_pos[0] + 1) * self.cell_size - 3, (self.enemy_pos[1] + 1) * self.cell_size - 3,
+            fill="red")
+
+    def key_handler(self, event):
+        if not self.timer_running:
+            return
+
+        dx, dy = 0, 0
+        if event.keysym == "Up":
+            dy = -1
+        elif event.keysym == "Down":
+            dy = 1
+        elif event.keysym == "Left":
+            dx = -1
+        elif event.keysym == "Right":
+            dx = 1
+
+        new_x = self.player_pos[0] + dx
+        new_y = self.player_pos[1] + dy
+
+        if self.maze[new_y][new_x] != '#':
+            self.canvas.move(self.player_oval, dx * self.cell_size, dy * self.cell_size)
+            self.player_pos = (new_x, new_y)
+
+            if self.player_pos == self.exit_pos:
+                self.win_level()
+
+    def update_timer(self):
+        if self.time_left > 0 and self.timer_running:
+            minutes = self.time_left // 60
+            seconds = self.time_left % 60
+            ratio = self.time_left / self.timer_seconds
+            red = int(255 * (1 - ratio))
+            green = int(255 * ratio)
+            color = f'#{red:02x}{green:02x}00'
+
+            self.timer_label.config(text=f"倒數：{minutes:02d}:{seconds:02d}", fg=color)
+
+            self.time_left -= 1
+            self.root.after(1000, self.update_timer)
+        elif self.time_left <= 0:
+            self.lose()
+
+    def move_enemy(self):
+        if not self.timer_running:
+            return
+
+        path = self.a_star(self.enemy_pos, self.player_pos)
+
+        if path and len(path) > 1:
+            next_pos = path[1]
+            dx = next_pos[0] - self.enemy_pos[0]
+            dy = next_pos[1] - self.enemy_pos[1]
+
+            if self.maze[next_pos[1]][next_pos[0]] != '#':
+                self.canvas.move(self.enemy_oval, dx * self.cell_size, dy * self.cell_size)
+                self.enemy_pos = next_pos
+
+                if self.enemy_pos == self.player_pos:
+                    self.lose()
+
+        self.root.after(400, self.move_enemy)
+
+    def a_star(self, start, goal):
+        heap = []
+        heapq.heappush(heap, (0, start))
+        came_from = {}
+        cost_so_far = {start: 0}
+
+        while heap:
+            _, current = heapq.heappop(heap)
+
+            if current == goal:
+                break
+
+            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nx, ny = current[0] + dx, current[1] + dy
+                if 0 <= nx < self.grid_size and 0 <= ny < self.grid_size and self.maze[ny][nx] != '#':
+                    next_pos = (nx, ny)
+                    new_cost = cost_so_far[current] + 1
+                    if next_pos not in cost_so_far or new_cost < cost_so_far[next_pos]:
+                        cost_so_far[next_pos] = new_cost
+                        priority = new_cost + abs(goal[0] - nx) + abs(goal[1] - ny)
+                        heapq.heappush(heap, (priority, next_pos))
+                        came_from[next_pos] = current
+
+        if goal not in came_from:
+            return []
+
+        path = [goal]
+        while path[-1] != start:
+            path.append(came_from[path[-1]])
+        path.reverse()
+        return path
+
+    def win_level(self):
+        self.timer_running = False
+        self.timer_label.config(text=f"🎉 第 {self.current_level + 1} 關通關！準備下一關...", fg="blue")
+        self.root.after(2000, self.next_level)
+
+    def lose(self):
+        self.timer_running = False
+        self.timer_label.config(text="💀 被抓到了！Game Over", fg="red")
+
+def main():
+    root = tk.Tk()
+    MazeGame(root)
+    root.mainloop()
+
+if __name__ == "__main__":
+    main()
