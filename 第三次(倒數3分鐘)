@@ -1,0 +1,172 @@
+import tkinter as tk
+import random
+import time
+
+class MazeGame:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("3分鐘倒數特效迷宮")
+
+        # 參數設定
+        self.cell_size = 20
+        self.grid_width = 21
+        self.grid_height = 21
+        self.timer_seconds = 180  # 3分鐘倒數
+
+        # UI組件
+        top_frame = tk.Frame(root)
+        top_frame.pack(pady=5)
+
+        tk.Label(top_frame, text="迷宮大小：").pack(side=tk.LEFT)
+        self.size_var = tk.StringVar(value="中")
+        size_menu = tk.OptionMenu(top_frame, self.size_var, "小", "中", "大", command=self.change_size)
+        size_menu.pack(side=tk.LEFT)
+
+        self.timer_label = tk.Label(root, text="", font=("Arial", 16))
+        self.timer_label.pack(pady=5)
+
+        self.canvas = tk.Canvas(root)
+        self.canvas.pack()
+
+        self.reset_button = tk.Button(root, text="重新開始", command=self.reset_game)
+        self.reset_button.pack(pady=5)
+
+        # 遊戲狀態
+        self.maze = []
+        self.player_pos = (1, 1)
+        self.exit_pos = (1, 1)
+        self.time_left = self.timer_seconds
+        self.timer_running = False
+
+        self.root.bind("<Key>", self.key_handler)
+
+        self.reset_game()
+
+    def change_size(self, choice):
+        sizes = {"小": (15, 15), "中": (21, 21), "大": (31, 31)}
+        self.grid_width, self.grid_height = sizes[choice]
+        self.reset_game()
+
+    def reset_game(self):
+        self.player_pos = (1, 1)
+        self.exit_pos = (self.grid_width-2, self.grid_height-2)
+        self.time_left = self.timer_seconds
+        self.timer_running = True
+        self.generate_maze()
+
+        canvas_width = self.grid_width * self.cell_size
+        canvas_height = self.grid_height * self.cell_size
+        self.canvas.config(width=canvas_width, height=canvas_height)
+
+        self.draw_maze()
+        self.update_timer()
+
+    def generate_maze(self):
+        self.maze = [['#'] * self.grid_width for _ in range(self.grid_height)]
+        stack = [(1, 1)]
+        self.maze[1][1] = ' '
+
+        while stack:
+            x, y = stack[-1]
+            directions = [(2, 0), (-2, 0), (0, 2), (0, -2)]
+            random.shuffle(directions)
+            carved = False
+
+            for dx, dy in directions:
+                nx, ny = x + dx, y + dy
+                if 1 <= nx < self.grid_width-1 and 1 <= ny < self.grid_height-1 and self.maze[ny][nx] == '#':
+                    self.maze[ny][nx] = ' '
+                    self.maze[y + dy//2][x + dx//2] = ' '
+                    stack.append((nx, ny))
+                    carved = True
+                    break
+
+            if not carved:
+                stack.pop()
+
+        self.maze[self.exit_pos[1]][self.exit_pos[0]] = 'E'
+
+    def draw_maze(self):
+        self.canvas.delete("all")
+        for y in range(self.grid_height):
+            for x in range(self.grid_width):
+                color = "black" if self.maze[y][x] == '#' else "white"
+                if self.maze[y][x] == 'E':
+                    color = "green"
+                self.canvas.create_rectangle(x*self.cell_size, y*self.cell_size,
+                                             (x+1)*self.cell_size, (y+1)*self.cell_size, fill=color, outline="gray")
+
+        self.draw_player()
+
+    def draw_player(self):
+        px, py = self.player_pos
+        self.player_oval = self.canvas.create_oval(px*self.cell_size+3, py*self.cell_size+3,
+                                                   (px+1)*self.cell_size-3, (py+1)*self.cell_size-3, fill="red")
+
+    def smooth_move(self, dx, dy):
+        steps = 5
+        move_x = dx * self.cell_size / steps
+        move_y = dy * self.cell_size / steps
+
+        for _ in range(steps):
+            self.canvas.move(self.player_oval, move_x, move_y)
+            self.root.update()
+            time.sleep(0.02)
+
+    def key_handler(self, event):
+        if not self.timer_running:
+            return
+
+        dx, dy = 0, 0
+        if event.keysym == "Up":
+            dy = -1
+        elif event.keysym == "Down":
+            dy = 1
+        elif event.keysym == "Left":
+            dx = -1
+        elif event.keysym == "Right":
+            dx = 1
+
+        new_x = self.player_pos[0] + dx
+        new_y = self.player_pos[1] + dy
+
+        if self.maze[new_y][new_x] != '#':
+            self.smooth_move(dx, dy)
+            self.player_pos = (new_x, new_y)
+
+            if (new_x, new_y) == self.exit_pos:
+                self.win()
+
+    def update_timer(self):
+        if self.time_left > 0 and self.timer_running:
+            ratio = self.time_left / self.timer_seconds
+            if ratio > 0.5:
+                color = f'#00{int(255*ratio):02x}00'  # 綠到黃
+            else:
+                red = int(255 * (1 - ratio))
+                color = f'#{red:02x}{int(255*ratio):02x}00'  # 黃到紅
+
+            minutes = self.time_left // 60
+            seconds = self.time_left % 60
+            self.timer_label.config(text=f"倒數：{minutes:02d}:{seconds:02d}", fg=color)
+
+            self.time_left -= 1
+            self.root.after(1000, self.update_timer)
+        elif self.time_left <= 0 and self.timer_running:
+            self.lose()
+
+    def win(self):
+        self.timer_running = False
+        self.timer_label.config(text="🎉 恭喜你過關了！", fg="blue")
+
+    def lose(self):
+        self.timer_running = False
+        self.timer_label.config(text="💀 時間到！你失敗了！", fg="red")
+
+def main():
+    root = tk.Tk()
+    MazeGame(root)
+    root.mainloop()
+
+if __name__ == "__main__":
+    main()
